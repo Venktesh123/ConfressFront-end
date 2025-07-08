@@ -6,6 +6,7 @@ import {
   FaVideoSlash,
   FaPhoneSlash,
   FaUserFriends,
+  FaComments,
 } from "react-icons/fa";
 import "./Controls.css";
 
@@ -17,6 +18,8 @@ const Controls = ({
   leaveRoom,
   toggleParticipants,
   participantsCount,
+  toggleChat,
+  unreadChatCount,
 }) => {
   return (
     <div className="controls">
@@ -61,6 +64,16 @@ const Controls = ({
       <button className="control-button" onClick={toggleParticipants}>
         <FaUserFriends />
         <span>Participants ({participantsCount})</span>
+      </button>
+
+      <button className="control-button chat-button" onClick={toggleChat}>
+        <div className="chat-icon-container">
+          <FaComments />
+          {unreadChatCount > 0 && (
+            <span className="chat-notification-badge">{unreadChatCount}</span>
+          )}
+        </div>
+        <span>Chat</span>
       </button>
 
       <button

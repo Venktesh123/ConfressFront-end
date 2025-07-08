@@ -5,6 +5,7 @@ import Peer from "peerjs";
 import Controls from "./Controls";
 import Participant from "./Participant";
 import ParticipantsList from "./ParticipantsList";
+import Chat from "./Chat";
 import "./Room.css";
 
 const API_URL = "https://confrencebackend.onrender.com";
@@ -20,6 +21,8 @@ const Room = () => {
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [videoEnabled, setVideoEnabled] = useState(true);
   const [showParticipants, setShowParticipants] = useState(false);
+  const [showChat, setShowChat] = useState(false);
+  const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [peerId, setPeerId] = useState("");
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
 
@@ -149,6 +152,15 @@ const Room = () => {
       ({ participantId, username: newUsername, peerId: newPeerId }) => {
         console.log(`User joined: ${newUsername} (${newPeerId})`);
 
+        // Send system message to chat
+        if (socketRef.current) {
+          socketRef.current.emit("send-system-message", {
+            roomId,
+            message: `${newUsername} joined the meeting`,
+            type: "join",
+          });
+        }
+
         if (
           newPeerId &&
           newPeerId !== peerId &&
@@ -185,8 +197,17 @@ const Room = () => {
 
     socketRef.current.on(
       "user-left",
-      ({ peerId: leftPeerId, participantId }) => {
+      ({ peerId: leftPeerId, participantId, username: leftUsername }) => {
         console.log(`User left: ${leftPeerId}`);
+
+        // Send system message to chat
+        if (socketRef.current && leftUsername) {
+          socketRef.current.emit("send-system-message", {
+            roomId,
+            message: `${leftUsername} left the meeting`,
+            type: "leave",
+          });
+        }
 
         if (leftPeerId && peersRef.current[leftPeerId]) {
           peersRef.current[leftPeerId].close();
@@ -248,6 +269,14 @@ const Room = () => {
     socketRef.current.on("room-error", ({ message }) => {
       alert(`Error: ${message}`);
       navigate("/");
+    });
+
+    // Chat event listeners
+    socketRef.current.on("chat-message", (messageData) => {
+      // If chat is closed and message is not from current user, increment unread count
+      if (!showChat && messageData.username !== username) {
+        setUnreadChatCount((prev) => prev + 1);
+      }
     });
   };
 
@@ -523,6 +552,18 @@ const Room = () => {
     }
   };
 
+  const toggleChat = () => {
+    setShowChat(!showChat);
+    if (!showChat) {
+      // Reset unread count when opening chat
+      setUnreadChatCount(0);
+    }
+  };
+
+  const handleChatMessageRead = () => {
+    setUnreadChatCount(0);
+  };
+
   const leaveRoom = () => {
     cleanup();
     navigate("/");
@@ -623,6 +664,8 @@ const Room = () => {
         leaveRoom={leaveRoom}
         toggleParticipants={() => setShowParticipants(!showParticipants)}
         participantsCount={Object.keys(participants).length + 1}
+        toggleChat={toggleChat}
+        unreadChatCount={unreadChatCount}
       />
 
       {/* Participants list sidebar */}
@@ -637,6 +680,19 @@ const Room = () => {
           ]}
           onClose={() => setShowParticipants(false)}
           onRemove={removeParticipantHandler}
+        />
+      )}
+
+      {/* Chat component */}
+      {showChat && (
+        <Chat
+          socket={socketRef.current}
+          roomId={roomId}
+          username={username}
+          isOpen={showChat}
+          onClose={() => setShowChat(false)}
+          unreadCount={unreadChatCount}
+          onMessageRead={handleChatMessageRead}
         />
       )}
     </div>
