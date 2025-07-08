@@ -1,0 +1,102 @@
+.home {
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.home-container {
+  max-width: 500px;
+  width: 100%;
+  background-color: #1e1e1e;
+  border-radius: 10px;
+  padding: 30px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.home-container h1 {
+  text-align: center;
+  margin-bottom: 30px;
+  color: #2d8cff;
+}
+
+.input-group {
+  margin-bottom: 20px;
+}
+
+.input-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.input-group input {
+  width: 100%;
+  padding: 12px;
+  border-radius: 5px;
+  border: 1px solid #444;
+  background-color: #333;
+  color: white;
+  font-size: 16px;
+}
+
+.button-group {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.create-button,
+.join-button {
+  width: 100%;
+  padding: 12px;
+  border-radius: 5px;
+  font-size: 16px;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.create-button {
+  background-color: #2d8cff;
+  color: white;
+  border: none;
+}
+
+.create-button:hover {
+  background-color: #1a7bef;
+}
+
+.create-button:disabled {
+  background-color: #666;
+  cursor: not-allowed;
+}
+
+.join-button {
+  background-color: transparent;
+  color: white;
+  border: 1px solid #2d8cff;
+}
+
+.join-button:hover {
+  background-color: rgba(45, 140, 255, 0.1);
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: #888;
+}
+
+.divider::before,
+.divider::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px solid #444;
+}
+
+.divider span {
+  padding: 0 10px;
+}

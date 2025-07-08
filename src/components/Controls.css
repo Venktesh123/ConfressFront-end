@@ -1,0 +1,44 @@
+.controls {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  padding: 15px;
+  background-color: #1e1e1e;
+  border-top: 1px solid #333;
+}
+
+.control-button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background-color: transparent;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 15px;
+  min-width: 80px;
+  transition: all 0.2s ease;
+}
+
+.control-button span {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.control-button:hover {
+  background-color: #333;
+}
+
+.control-button-off {
+  color: #ff5d5d;
+}
+
+.control-button-danger {
+  background-color: #ff5d5d;
+}
+
+.control-button-danger:hover {
+  background-color: #ff3c3c;
+}
