@@ -20,6 +20,7 @@
   padding: 10px 15px;
   min-width: 80px;
   transition: all 0.2s ease;
+  position: relative;
 }
 
 .control-button span {
@@ -41,4 +42,89 @@
 
 .control-button-danger:hover {
   background-color: #ff3c3c;
+}
+
+/* Chat button specific styles */
+.chat-button {
+  position: relative;
+}
+
+.chat-icon-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.chat-notification-badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  background-color: #ff5d5d;
+  color: white;
+  border-radius: 50%;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: bold;
+  min-width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.1);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .controls {
+    gap: 10px;
+    padding: 12px;
+    flex-wrap: wrap;
+  }
+
+  .control-button {
+    min-width: 60px;
+    padding: 8px 10px;
+    gap: 4px;
+  }
+
+  .control-button span {
+    font-size: 10px;
+  }
+
+  .chat-notification-badge {
+    font-size: 9px;
+    min-width: 14px;
+    height: 14px;
+    top: -6px;
+    right: -6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .controls {
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .control-button {
+    min-width: 50px;
+    padding: 6px 8px;
+  }
+
+  .control-button span {
+    font-size: 9px;
+  }
 }
