@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import "./Home.css";
 
-const API_URL = "http://localhost:5000";
+const API_URL = "https://confrencebackend.onrender.com";
 
 const Home = () => {
   const [username, setUsername] = useState("");

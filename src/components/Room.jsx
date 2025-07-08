@@ -7,7 +7,7 @@ import Participant from "./Participant";
 import ParticipantsList from "./ParticipantsList";
 import "./Room.css";
 
-const API_URL = "http://localhost:5000";
+const API_URL = "https://confrencebackend.onrender.com";
 
 const Room = () => {
   const { roomId } = useParams();
