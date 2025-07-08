@@ -43,23 +43,38 @@ const Room = () => {
     };
   }, [username, navigate, roomId]);
 
+  const getMediaStream = async (video = true, audio = true) => {
+    try {
+      const constraints = {
+        audio: audio
+          ? {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            }
+          : false,
+        video: video
+          ? {
+              width: { ideal: 1280, max: 1920 },
+              height: { ideal: 720, max: 1080 },
+              facingMode: "user",
+            }
+          : false,
+      };
+
+      return await navigator.mediaDevices.getUserMedia(constraints);
+    } catch (error) {
+      console.error("Error getting media stream:", error);
+      throw error;
+    }
+  };
+
   const initializeConnection = async () => {
     try {
       setConnectionStatus("Getting media...");
 
       // Get media stream first
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 1280, max: 1920 },
-          height: { ideal: 720, max: 1080 },
-          facingMode: "user",
-        },
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
-      });
+      const mediaStream = await getMediaStream(true, true);
 
       setStream(mediaStream);
       streamRef.current = mediaStream;
@@ -105,6 +120,24 @@ const Room = () => {
     }
   };
 
+  const updateStreamForAllPeers = (newStream) => {
+    // Update stream for all existing peer connections
+    Object.values(peersRef.current).forEach((call) => {
+      if (call && call.peerConnection) {
+        const sender = call.peerConnection
+          .getSenders()
+          .find((s) => s.track && s.track.kind === "video");
+        if (sender && newStream.getVideoTracks().length > 0) {
+          sender
+            .replaceTrack(newStream.getVideoTracks()[0])
+            .catch((error) =>
+              console.error("Error replacing video track:", error)
+            );
+        }
+      }
+    });
+  };
+
   const setupSocketEvents = (mediaStream) => {
     socketRef.current.on("connect", () => {
       console.log("Socket connected:", socketRef.current.id);
@@ -124,7 +157,7 @@ const Room = () => {
         ) {
           // Small delay to ensure both peers are ready
           setTimeout(() => {
-            makeCall(newPeerId, newUsername, mediaStream);
+            makeCall(newPeerId, newUsername, streamRef.current);
           }, 1000);
         }
       }
@@ -139,7 +172,11 @@ const Room = () => {
         Object.values(existingParticipants).forEach((participant) => {
           if (participant.peerId && participant.peerId !== peerId) {
             setTimeout(() => {
-              makeCall(participant.peerId, participant.username, mediaStream);
+              makeCall(
+                participant.peerId,
+                participant.username,
+                streamRef.current
+              );
             }, 2000);
           }
         });
@@ -233,8 +270,8 @@ const Room = () => {
     peerRef.current.on("call", (call) => {
       console.log("Receiving call from:", call.peer);
 
-      // Answer the call with our stream
-      call.answer(mediaStream);
+      // Answer the call with our current stream
+      call.answer(streamRef.current);
 
       call.on("stream", (remoteStream) => {
         console.log("Received remote stream from:", call.peer);
@@ -262,7 +299,7 @@ const Room = () => {
         if (peerRef.current.destroyed) {
           console.log("Attempting to recreate peer connection...");
           // Recreate peer if destroyed
-          initializePeer(mediaStream);
+          initializePeer(streamRef.current);
         }
       }, 3000);
     });
@@ -408,12 +445,68 @@ const Room = () => {
     }
   };
 
-  const toggleVideo = () => {
-    if (streamRef.current) {
-      const videoTracks = streamRef.current.getVideoTracks();
-      videoTracks.forEach((track) => {
-        track.enabled = !videoEnabled;
-      });
+  const toggleVideo = async () => {
+    try {
+      if (videoEnabled) {
+        // Turn OFF video - stop video tracks
+        if (streamRef.current) {
+          const videoTracks = streamRef.current.getVideoTracks();
+          videoTracks.forEach((track) => {
+            track.stop(); // Actually stop the camera
+          });
+
+          // Create new stream with only audio
+          const audioStream = await getMediaStream(false, true);
+
+          // Combine existing audio with no video
+          const newStream = new MediaStream([...audioStream.getAudioTracks()]);
+
+          // Update the stream reference
+          streamRef.current = newStream;
+          setStream(newStream);
+
+          // Update local video element
+          if (userVideo.current) {
+            userVideo.current.srcObject = newStream;
+          }
+
+          // Update all peer connections to send audio-only stream
+          Object.values(peersRef.current).forEach((call) => {
+            if (call && call.peerConnection) {
+              // Remove video track from all senders
+              const videoSender = call.peerConnection
+                .getSenders()
+                .find((s) => s.track && s.track.kind === "video");
+              if (videoSender) {
+                call.peerConnection.removeTrack(videoSender);
+              }
+            }
+          });
+        }
+      } else {
+        // Turn ON video - get new stream with video
+        const newStream = await getMediaStream(true, true);
+
+        // Update the stream reference
+        streamRef.current = newStream;
+        setStream(newStream);
+
+        // Update local video element
+        if (userVideo.current) {
+          userVideo.current.srcObject = newStream;
+        }
+
+        // Update all peer connections with new video stream
+        Object.values(peersRef.current).forEach((call) => {
+          if (call && call.peerConnection) {
+            // Add video track to all peer connections
+            const videoTrack = newStream.getVideoTracks()[0];
+            if (videoTrack) {
+              call.peerConnection.addTrack(videoTrack, newStream);
+            }
+          }
+        });
+      }
 
       setVideoEnabled(!videoEnabled);
 
@@ -424,6 +517,9 @@ const Room = () => {
           enabled: !videoEnabled,
         });
       }
+    } catch (error) {
+      console.error("Error toggling video:", error);
+      alert("Failed to toggle video. Please check camera permissions.");
     }
   };
 
