@@ -271,13 +271,21 @@ const Room = () => {
       navigate("/");
     });
 
-    // Chat event listeners
-    socketRef.current.on("chat-message", (messageData) => {
+    // Chat event listeners - only handle unread count logic
+    // The actual message handling is done by the Chat component
+    const handleChatUnread = (messageData) => {
       // If chat is closed and message is not from current user, increment unread count
       if (!showChat && messageData.username !== username) {
         setUnreadChatCount((prev) => prev + 1);
       }
-    });
+    };
+
+    socketRef.current.on("chat-message", handleChatUnread);
+    socketRef.current.on("private-message", handleChatUnread);
+    socketRef.current.on("host-message", handleChatUnread);
+
+    // System messages don't count as unread since they're automatic
+    // socketRef.current.on("chat-system-message", handleChatUnread);
   };
 
   const setupPeerEvents = (mediaStream) => {
@@ -619,7 +627,7 @@ const Room = () => {
         </div>
       </div>
 
-      <div className="participants-container">
+      <div className={`participants-container ${showChat ? "chat-open" : ""}`}>
         {/* Current user's video */}
         <div className="participant-wrapper">
           <Participant
