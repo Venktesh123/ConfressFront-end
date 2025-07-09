@@ -32,6 +32,16 @@
   background-color: #333;
 }
 
+.control-button:disabled {
+  color: #666;
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.control-button:disabled:hover {
+  background-color: transparent;
+}
+
 .control-button-off {
   color: #ff5d5d;
 }
@@ -42,6 +52,15 @@
 
 .control-button-danger:hover {
   background-color: #ff3c3c;
+}
+
+.control-button-active {
+  background-color: #2d8cff;
+  color: white;
+}
+
+.control-button-active:hover {
+  background-color: #1a7bef;
 }
 
 /* Chat button specific styles */
@@ -83,6 +102,27 @@
   }
   100% {
     transform: scale(1);
+  }
+}
+
+/* Screen share button specific styles */
+.control-button.control-button-active .fa-desktop,
+.control-button.control-button-active .fa-stop {
+  animation: screen-share-pulse 2s infinite;
+}
+
+@keyframes screen-share-pulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(1.1);
+    opacity: 0.8;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
   }
 }
 

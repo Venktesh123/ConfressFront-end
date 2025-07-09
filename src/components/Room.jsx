@@ -20,6 +20,7 @@ const Room = () => {
   const [stream, setStream] = useState(null);
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [videoEnabled, setVideoEnabled] = useState(true);
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
   const [showParticipants, setShowParticipants] = useState(false);
   const [showChat, setShowChat] = useState(false);
   const [unreadChatCount, setUnreadChatCount] = useState(0);
@@ -31,6 +32,8 @@ const Room = () => {
   const userVideo = useRef();
   const peersRef = useRef({});
   const streamRef = useRef();
+  const originalStreamRef = useRef(); // Store original camera stream
+  const screenStreamRef = useRef(); // Store screen share stream
 
   // Redirect if no username is provided
   useEffect(() => {
@@ -72,6 +75,29 @@ const Room = () => {
     }
   };
 
+  const getScreenStream = async () => {
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          width: { ideal: 1920, max: 1920 },
+          height: { ideal: 1080, max: 1080 },
+        },
+        audio: true, // Include system audio if available
+      });
+
+      // Listen for screen share ending (user clicks browser stop button)
+      screenStream.getVideoTracks()[0].addEventListener("ended", () => {
+        console.log("Screen share ended by user");
+        stopScreenShare();
+      });
+
+      return screenStream;
+    } catch (error) {
+      console.error("Error getting screen stream:", error);
+      throw error;
+    }
+  };
+
   const initializeConnection = async () => {
     try {
       setConnectionStatus("Getting media...");
@@ -81,6 +107,7 @@ const Room = () => {
 
       setStream(mediaStream);
       streamRef.current = mediaStream;
+      originalStreamRef.current = mediaStream; // Store original stream
 
       // Set local video
       if (userVideo.current) {
@@ -127,14 +154,31 @@ const Room = () => {
     // Update stream for all existing peer connections
     Object.values(peersRef.current).forEach((call) => {
       if (call && call.peerConnection) {
-        const sender = call.peerConnection
-          .getSenders()
-          .find((s) => s.track && s.track.kind === "video");
-        if (sender && newStream.getVideoTracks().length > 0) {
-          sender
-            .replaceTrack(newStream.getVideoTracks()[0])
+        const senders = call.peerConnection.getSenders();
+        const videoTrack = newStream.getVideoTracks()[0];
+        const audioTrack = newStream.getAudioTracks()[0];
+
+        // Replace video track
+        const videoSender = senders.find(
+          (s) => s.track && s.track.kind === "video"
+        );
+        if (videoSender && videoTrack) {
+          videoSender
+            .replaceTrack(videoTrack)
             .catch((error) =>
               console.error("Error replacing video track:", error)
+            );
+        }
+
+        // Replace audio track
+        const audioSender = senders.find(
+          (s) => s.track && s.track.kind === "audio"
+        );
+        if (audioSender && audioTrack) {
+          audioSender
+            .replaceTrack(audioTrack)
+            .catch((error) =>
+              console.error("Error replacing audio track:", error)
             );
         }
       }
@@ -243,6 +287,21 @@ const Room = () => {
           [remotePeerId]: {
             ...prev[remotePeerId],
             videoEnabled: enabled,
+          },
+        }));
+      }
+    );
+
+    // Screen sharing events
+    socketRef.current.on(
+      "user-screen-share",
+      ({ peerId: remotePeerId, isSharing }) => {
+        console.log(`User ${remotePeerId} screen sharing: ${isSharing}`);
+        setParticipants((prev) => ({
+          ...prev,
+          [remotePeerId]: {
+            ...prev[remotePeerId],
+            isScreenSharing: isSharing,
           },
         }));
       }
@@ -419,6 +478,7 @@ const Room = () => {
         call,
         audioEnabled: true,
         videoEnabled: true,
+        isScreenSharing: false,
       },
     }));
   };
@@ -441,6 +501,18 @@ const Room = () => {
     // Stop all media tracks
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => {
+        track.stop();
+      });
+    }
+
+    if (originalStreamRef.current) {
+      originalStreamRef.current.getTracks().forEach((track) => {
+        track.stop();
+      });
+    }
+
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((track) => {
         track.stop();
       });
     }
@@ -483,6 +555,9 @@ const Room = () => {
   };
 
   const toggleVideo = async () => {
+    // Don't allow video toggle while screen sharing
+    if (isScreenSharing) return;
+
     try {
       if (videoEnabled) {
         // Turn OFF video - stop video tracks
@@ -500,6 +575,7 @@ const Room = () => {
 
           // Update the stream reference
           streamRef.current = newStream;
+          originalStreamRef.current = newStream;
           setStream(newStream);
 
           // Update local video element
@@ -526,6 +602,7 @@ const Room = () => {
 
         // Update the stream reference
         streamRef.current = newStream;
+        originalStreamRef.current = newStream;
         setStream(newStream);
 
         // Update local video element
@@ -557,6 +634,107 @@ const Room = () => {
     } catch (error) {
       console.error("Error toggling video:", error);
       alert("Failed to toggle video. Please check camera permissions.");
+    }
+  };
+
+  const toggleScreenShare = async () => {
+    if (!isScreenSharing) {
+      // Start screen sharing
+      try {
+        const screenStream = await getScreenStream();
+
+        // Combine screen video with current audio
+        const audioTracks = streamRef.current.getAudioTracks();
+        const screenVideoTrack = screenStream.getVideoTracks()[0];
+
+        // Create new stream with screen video and current audio
+        const newStream = new MediaStream([screenVideoTrack, ...audioTracks]);
+
+        // Store the screen stream for cleanup
+        screenStreamRef.current = screenStream;
+
+        // Update local video
+        if (userVideo.current) {
+          userVideo.current.srcObject = newStream;
+        }
+
+        // Update stream reference
+        streamRef.current = newStream;
+        setStream(newStream);
+        setIsScreenSharing(true);
+
+        // Update all peer connections
+        updateStreamForAllPeers(newStream);
+
+        // Notify other participants
+        if (socketRef.current) {
+          socketRef.current.emit("user-screen-share", {
+            roomId,
+            peerId,
+            isSharing: true,
+          });
+        }
+
+        console.log("Screen sharing started");
+      } catch (error) {
+        console.error("Error starting screen share:", error);
+        if (error.name === "NotAllowedError") {
+          alert("Screen sharing permission denied");
+        } else {
+          alert("Failed to start screen sharing");
+        }
+      }
+    } else {
+      // Stop screen sharing
+      stopScreenShare();
+    }
+  };
+
+  const stopScreenShare = async () => {
+    try {
+      // Stop screen stream
+      if (screenStreamRef.current) {
+        screenStreamRef.current.getTracks().forEach((track) => {
+          track.stop();
+        });
+        screenStreamRef.current = null;
+      }
+
+      // Get original camera stream or create new one
+      let cameraStream = originalStreamRef.current;
+
+      // If original stream is not available or has no video tracks, get new one
+      if (!cameraStream || cameraStream.getVideoTracks().length === 0) {
+        cameraStream = await getMediaStream(videoEnabled, true);
+        originalStreamRef.current = cameraStream;
+      }
+
+      // Update local video
+      if (userVideo.current) {
+        userVideo.current.srcObject = cameraStream;
+      }
+
+      // Update stream reference
+      streamRef.current = cameraStream;
+      setStream(cameraStream);
+      setIsScreenSharing(false);
+
+      // Update all peer connections
+      updateStreamForAllPeers(cameraStream);
+
+      // Notify other participants
+      if (socketRef.current) {
+        socketRef.current.emit("user-screen-share", {
+          roomId,
+          peerId,
+          isSharing: false,
+        });
+      }
+
+      console.log("Screen sharing stopped");
+    } catch (error) {
+      console.error("Error stopping screen share:", error);
+      alert("Failed to stop screen sharing");
     }
   };
 
@@ -636,8 +814,9 @@ const Room = () => {
             stream={stream}
             muted={true}
             audioEnabled={audioEnabled}
-            videoEnabled={videoEnabled}
+            videoEnabled={videoEnabled || isScreenSharing}
             isLocal={true}
+            isScreenSharing={isScreenSharing}
           />
         </div>
 
@@ -650,6 +829,7 @@ const Room = () => {
               audioEnabled={participant.audioEnabled}
               videoEnabled={participant.videoEnabled}
               isLocal={false}
+              isScreenSharing={participant.isScreenSharing}
             />
           </div>
         ))}
@@ -674,6 +854,8 @@ const Room = () => {
         participantsCount={Object.keys(participants).length + 1}
         toggleChat={toggleChat}
         unreadChatCount={unreadChatCount}
+        isScreenSharing={isScreenSharing}
+        toggleScreenShare={toggleScreenShare}
       />
 
       {/* Participants list sidebar */}

@@ -7,6 +7,8 @@ import {
   FaPhoneSlash,
   FaUserFriends,
   FaComments,
+  FaDesktop,
+  FaStop,
 } from "react-icons/fa";
 import "./Controls.css";
 
@@ -20,6 +22,8 @@ const Controls = ({
   participantsCount,
   toggleChat,
   unreadChatCount,
+  isScreenSharing,
+  toggleScreenShare,
 }) => {
   return (
     <div className="controls">
@@ -47,6 +51,7 @@ const Controls = ({
           !videoEnabled ? "control-button-off" : ""
         }`}
         onClick={toggleVideo}
+        disabled={isScreenSharing}
       >
         {videoEnabled ? (
           <>
@@ -57,6 +62,25 @@ const Controls = ({
           <>
             <FaVideoSlash />
             <span>Start Video</span>
+          </>
+        )}
+      </button>
+
+      <button
+        className={`control-button ${
+          isScreenSharing ? "control-button-active" : ""
+        }`}
+        onClick={toggleScreenShare}
+      >
+        {isScreenSharing ? (
+          <>
+            <FaStop />
+            <span>Stop Sharing</span>
+          </>
+        ) : (
+          <>
+            <FaDesktop />
+            <span>Share Screen</span>
           </>
         )}
       </button>
