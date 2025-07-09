@@ -5,6 +5,8 @@ import {
   FaComments,
   FaUser,
   FaSmile,
+  FaCrown,
+  FaLock,
 } from "react-icons/fa";
 import "./Chat.css";
 
@@ -42,47 +44,89 @@ const Chat = ({
   useEffect(() => {
     if (!socket) return;
 
-    // Listen for new messages
-    socket.on("chat-message", (messageData) => {
-      setMessages((prev) => [...prev, messageData]);
+    // Listen for all types of messages
+    const handleChatMessage = (messageData) => {
+      console.log("Received chat message:", messageData);
+      setMessages((prev) => [...prev, { ...messageData, chatMode: "public" }]);
 
       // If chat is not open, trigger unread count
-      if (!isOpen && onMessageRead) {
-        // Don't count our own messages as unread
-        if (messageData.username !== username) {
-          // This will be handled by parent component
-        }
+      if (!isOpen && messageData.username !== username) {
+        // This will be handled by parent component through onMessageRead
       }
-    });
+    };
 
-    // Listen for typing indicators
-    socket.on(
-      "user-typing",
-      ({ username: typingUsername, isTyping: typing }) => {
-        setTypingUsers((prev) => {
-          if (typing) {
-            // Add user to typing list if not already there
-            if (!prev.includes(typingUsername) && typingUsername !== username) {
-              return [...prev, typingUsername];
-            }
-          } else {
-            // Remove user from typing list
-            return prev.filter((user) => user !== typingUsername);
+    const handlePrivateMessage = (messageData) => {
+      console.log("Received private message:", messageData);
+      setMessages((prev) => [...prev, { ...messageData, chatMode: "private" }]);
+
+      if (!isOpen && messageData.username !== username) {
+        // Handle unread count for private messages
+      }
+    };
+
+    const handleHostMessage = (messageData) => {
+      console.log("Received host message:", messageData);
+      setMessages((prev) => [
+        ...prev,
+        { ...messageData, chatMode: "host-only" },
+      ]);
+
+      if (!isOpen && messageData.username !== username) {
+        // Handle unread count for host messages
+      }
+    };
+
+    const handleSystemMessage = (messageData) => {
+      console.log("Received system message:", messageData);
+      setMessages((prev) => [...prev, { ...messageData, type: "system" }]);
+    };
+
+    const handleTyping = ({ username: typingUsername, isTyping: typing }) => {
+      setTypingUsers((prev) => {
+        if (typing) {
+          // Add user to typing list if not already there
+          if (!prev.includes(typingUsername) && typingUsername !== username) {
+            return [...prev, typingUsername];
           }
-          return prev;
-        });
-      }
-    );
+        } else {
+          // Remove user from typing list
+          return prev.filter((user) => user !== typingUsername);
+        }
+        return prev;
+      });
+    };
 
-    // Listen for system messages (user joined/left)
-    socket.on("chat-system-message", (messageData) => {
-      setMessages((prev) => [...prev, messageData]);
-    });
+    const handleChatError = ({ message }) => {
+      console.error("Chat error:", message);
+      // You could show this error in the chat or as a notification
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          message: `Error: ${message}`,
+          timestamp: new Date(),
+          type: "system",
+          systemType: "error",
+        },
+      ]);
+    };
 
+    // Set up all event listeners
+    socket.on("chat-message", handleChatMessage);
+    socket.on("private-message", handlePrivateMessage);
+    socket.on("host-message", handleHostMessage);
+    socket.on("chat-system-message", handleSystemMessage);
+    socket.on("user-typing", handleTyping);
+    socket.on("chat-error", handleChatError);
+
+    // Clean up event listeners
     return () => {
-      socket.off("chat-message");
-      socket.off("user-typing");
-      socket.off("chat-system-message");
+      socket.off("chat-message", handleChatMessage);
+      socket.off("private-message", handlePrivateMessage);
+      socket.off("host-message", handleHostMessage);
+      socket.off("chat-system-message", handleSystemMessage);
+      socket.off("user-typing", handleTyping);
+      socket.off("chat-error", handleChatError);
     };
   }, [socket, username, isOpen, onMessageRead]);
 
@@ -99,6 +143,7 @@ const Chat = ({
       type: "user",
     };
 
+    // Send public message by default
     socket.emit("send-chat-message", messageData);
     setNewMessage("");
 
@@ -186,6 +231,7 @@ const Chat = ({
         !prevMessage ||
         prevMessage.username !== message.username ||
         prevMessage.type !== message.type ||
+        prevMessage.chatMode !== message.chatMode ||
         new Date(message.timestamp) - new Date(prevMessage.timestamp) > 300000; // 5 minutes
 
       // Check if this is the last message in a group
@@ -193,6 +239,7 @@ const Chat = ({
         !nextMessage ||
         nextMessage.username !== message.username ||
         nextMessage.type !== message.type ||
+        nextMessage.chatMode !== message.chatMode ||
         new Date(nextMessage.timestamp) - new Date(message.timestamp) > 300000;
 
       if (shouldStartNewGroup) {
@@ -209,6 +256,17 @@ const Chat = ({
     });
 
     return grouped;
+  };
+
+  const getMessageIcon = (chatMode) => {
+    switch (chatMode) {
+      case "private":
+        return <FaLock className="message-mode-icon" title="Private message" />;
+      case "host-only":
+        return <FaCrown className="message-mode-icon" title="Host message" />;
+      default:
+        return null;
+    }
   };
 
   if (!isOpen) return null;
@@ -242,7 +300,9 @@ const Chat = ({
             <div
               className={`message-group ${
                 group.type === "system" ? "system" : ""
-              } ${group.username === username ? "own" : "other"}`}
+              } ${group.username === username ? "own" : "other"} ${
+                group.chatMode === "private" ? "private" : ""
+              } ${group.chatMode === "host-only" ? "host-only" : ""}`}
             >
               {group.type !== "system" && (
                 <div className="message-header">
@@ -250,7 +310,10 @@ const Chat = ({
                     <FaUser />
                   </div>
                   <div className="message-info">
-                    <span className="message-username">{group.username}</span>
+                    <div className="message-username-container">
+                      <span className="message-username">{group.username}</span>
+                      {getMessageIcon(group.chatMode)}
+                    </div>
                     <span className="message-time">
                       {formatTime(group.timestamp)}
                     </span>
@@ -262,7 +325,9 @@ const Chat = ({
                 {group.messages.map((message, messageIndex) => (
                   <div
                     key={messageIndex}
-                    className={`message-text ${group.type}`}
+                    className={`message-text ${group.type} ${
+                      group.chatMode || ""
+                    }`}
                   >
                     {message.message}
                     {messageIndex === group.messages.length - 1 &&

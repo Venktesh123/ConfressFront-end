@@ -121,6 +121,36 @@
   align-items: center;
 }
 
+.message-group.private {
+  position: relative;
+}
+
+.message-group.private::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background-color: #ffa500;
+  border-radius: 2px;
+}
+
+.message-group.host-only {
+  position: relative;
+}
+
+.message-group.host-only::before {
+  content: "";
+  position: absolute;
+  left: -10px;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background-color: #9d4edd;
+  border-radius: 2px;
+}
+
 .message-header {
   display: flex;
   align-items: center;
@@ -149,6 +179,14 @@
   background-color: #4caf50;
 }
 
+.message-group.private .message-avatar {
+  background-color: #ffa500;
+}
+
+.message-group.host-only .message-avatar {
+  background-color: #9d4edd;
+}
+
 .message-info {
   display: flex;
   flex-direction: column;
@@ -159,6 +197,12 @@
   align-items: flex-end;
 }
 
+.message-username-container {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .message-username {
   font-size: 13px;
   font-weight: 600;
@@ -167,6 +211,27 @@
 
 .message-group.own .message-username {
   color: #4caf50;
+}
+
+.message-group.private .message-username {
+  color: #ffa500;
+}
+
+.message-group.host-only .message-username {
+  color: #9d4edd;
+}
+
+.message-mode-icon {
+  font-size: 10px;
+  color: #888;
+}
+
+.message-group.private .message-mode-icon {
+  color: #ffa500;
+}
+
+.message-group.host-only .message-mode-icon {
+  color: #9d4edd;
 }
 
 .message-time {
@@ -217,6 +282,27 @@
   text-align: center;
   padding: 4px 8px;
   font-size: 13px;
+}
+
+.message-text.private {
+  border-left: 3px solid #ffa500;
+  padding-left: 10px;
+}
+
+.message-text.host-only {
+  border-left: 3px solid #9d4edd;
+  padding-left: 10px;
+  background-color: rgba(157, 78, 221, 0.1);
+}
+
+.message-group.own .message-text.private {
+  background-color: #e67e00;
+  border-left: 3px solid #ffa500;
+}
+
+.message-group.own .message-text.host-only {
+  background-color: #7c3aed;
+  border-left: 3px solid #9d4edd;
 }
 
 .message-time-inline {
