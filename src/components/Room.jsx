@@ -26,6 +26,8 @@ const Room = () => {
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [peerId, setPeerId] = useState("");
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
+  const [isHost, setIsHost] = useState(false); // New state for host status
+  const [hostControlsActive, setHostControlsActive] = useState(false); // Track if host controls are being used
 
   const socketRef = useRef();
   const peerRef = useRef();
@@ -191,9 +193,20 @@ const Room = () => {
       setConnectionStatus("Connected to server");
     });
 
+    // Host assignment event
+    socketRef.current.on("host-assigned", ({ isHost: hostStatus }) => {
+      console.log("Host status received:", hostStatus);
+      setIsHost(hostStatus);
+    });
+
     socketRef.current.on(
       "user-joined",
-      ({ participantId, username: newUsername, peerId: newPeerId }) => {
+      ({
+        participantId,
+        username: newUsername,
+        peerId: newPeerId,
+        isHost: userIsHost,
+      }) => {
         console.log(`User joined: ${newUsername} (${newPeerId})`);
 
         // Send system message to chat
@@ -213,7 +226,7 @@ const Room = () => {
         ) {
           // Small delay to ensure both peers are ready
           setTimeout(() => {
-            makeCall(newPeerId, newUsername, streamRef.current);
+            makeCall(newPeerId, newUsername, streamRef.current, userIsHost);
           }, 1000);
         }
       }
@@ -231,7 +244,8 @@ const Room = () => {
               makeCall(
                 participant.peerId,
                 participant.username,
-                streamRef.current
+                streamRef.current,
+                participant.isHost
               );
             }, 2000);
           }
@@ -307,6 +321,37 @@ const Room = () => {
       }
     );
 
+    // NEW: Host control events
+    socketRef.current.on("host-muted-audio", ({ forced }) => {
+      console.log("Host muted your audio");
+      if (forced && audioEnabled) {
+        // Force mute the user
+        forceToggleAudio(false);
+        showHostActionNotification("Host muted your microphone");
+      }
+    });
+
+    socketRef.current.on("host-unmuted-audio", () => {
+      console.log("Host requested you to unmute");
+      showHostActionNotification(
+        "Host requested you to unmute your microphone"
+      );
+    });
+
+    socketRef.current.on("host-disabled-video", ({ forced }) => {
+      console.log("Host disabled your video");
+      if (forced && videoEnabled && !isScreenSharing) {
+        // Force disable video
+        forceToggleVideo(false);
+        showHostActionNotification("Host turned off your camera");
+      }
+    });
+
+    socketRef.current.on("host-enabled-video", () => {
+      console.log("Host requested you to enable video");
+      showHostActionNotification("Host requested you to turn on your camera");
+    });
+
     socketRef.current.on("you-were-removed", () => {
       alert("You have been removed from the meeting by the host");
       leaveRoom();
@@ -342,9 +387,6 @@ const Room = () => {
     socketRef.current.on("chat-message", handleChatUnread);
     socketRef.current.on("private-message", handleChatUnread);
     socketRef.current.on("host-message", handleChatUnread);
-
-    // System messages don't count as unread since they're automatic
-    // socketRef.current.on("chat-system-message", handleChatUnread);
   };
 
   const setupPeerEvents = (mediaStream) => {
@@ -430,7 +472,12 @@ const Room = () => {
     setupPeerEvents(mediaStream);
   };
 
-  const makeCall = (remotePeerId, remoteUsername, mediaStream) => {
+  const makeCall = (
+    remotePeerId,
+    remoteUsername,
+    mediaStream,
+    userIsHost = false
+  ) => {
     console.log("Making call to:", remotePeerId);
 
     if (
@@ -451,7 +498,13 @@ const Room = () => {
 
     call.on("stream", (remoteStream) => {
       console.log("Received stream from called peer:", remotePeerId);
-      addParticipant(remotePeerId, remoteStream, call, remoteUsername);
+      addParticipant(
+        remotePeerId,
+        remoteStream,
+        call,
+        remoteUsername,
+        userIsHost
+      );
     });
 
     call.on("close", () => {
@@ -467,7 +520,13 @@ const Room = () => {
     peersRef.current[remotePeerId] = call;
   };
 
-  const addParticipant = (peerId, stream, call, username = "Unknown") => {
+  const addParticipant = (
+    peerId,
+    stream,
+    call,
+    username = "Unknown",
+    userIsHost = false
+  ) => {
     setParticipants((prev) => ({
       ...prev,
       [peerId]: {
@@ -479,6 +538,7 @@ const Room = () => {
         audioEnabled: true,
         videoEnabled: true,
         isScreenSharing: false,
+        isHost: userIsHost,
       },
     }));
   };
@@ -493,6 +553,187 @@ const Room = () => {
       delete newParticipants[peerId];
       return newParticipants;
     });
+  };
+
+  // NEW: Show notification when host performs actions
+  const showHostActionNotification = (message) => {
+    // Create a notification element
+    const notification = document.createElement("div");
+    notification.className = "host-action-notification";
+    notification.textContent = message;
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background-color: rgba(255, 193, 7, 0.9);
+      color: #000;
+      padding: 12px 20px;
+      border-radius: 25px;
+      font-weight: 500;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      animation: slideDown 0.3s ease-out;
+    `;
+
+    // Add animation keyframes if not already added
+    if (!document.querySelector("#hostNotificationStyles")) {
+      const style = document.createElement("style");
+      style.id = "hostNotificationStyles";
+      style.textContent = `
+        @keyframes slideDown {
+          from {
+            transform: translateX(-50%) translateY(-20px);
+            opacity: 0;
+          }
+          to {
+            transform: translateX(-50%) translateY(0);
+            opacity: 1;
+          }
+        }
+      `;
+      document.head.appendChild(style);
+    }
+
+    document.body.appendChild(notification);
+
+    // Remove notification after 3 seconds
+    setTimeout(() => {
+      if (notification.parentNode) {
+        notification.parentNode.removeChild(notification);
+      }
+    }, 3000);
+  };
+
+  // NEW: Force toggle functions (when host controls user)
+  const forceToggleAudio = (enabled) => {
+    if (streamRef.current) {
+      const audioTracks = streamRef.current.getAudioTracks();
+      audioTracks.forEach((track) => {
+        track.enabled = enabled;
+      });
+
+      setAudioEnabled(enabled);
+      setHostControlsActive(true);
+
+      // Broadcast the change
+      if (socketRef.current) {
+        socketRef.current.emit("toggle-audio", {
+          roomId,
+          peerId,
+          enabled: enabled,
+        });
+      }
+
+      // Reset host controls active flag after a delay
+      setTimeout(() => {
+        setHostControlsActive(false);
+      }, 2000);
+    }
+  };
+
+  const forceToggleVideo = async (enabled) => {
+    if (isScreenSharing) return;
+
+    try {
+      if (!enabled && videoEnabled) {
+        // Force turn OFF video
+        if (streamRef.current) {
+          const videoTracks = streamRef.current.getVideoTracks();
+          videoTracks.forEach((track) => {
+            track.stop();
+          });
+
+          // Create new stream with only audio
+          const audioStream = await getMediaStream(false, true);
+          const newStream = new MediaStream([...audioStream.getAudioTracks()]);
+
+          streamRef.current = newStream;
+          originalStreamRef.current = newStream;
+          setStream(newStream);
+
+          if (userVideo.current) {
+            userVideo.current.srcObject = newStream;
+          }
+
+          // Update peer connections
+          Object.values(peersRef.current).forEach((call) => {
+            if (call && call.peerConnection) {
+              const videoSender = call.peerConnection
+                .getSenders()
+                .find((s) => s.track && s.track.kind === "video");
+              if (videoSender) {
+                call.peerConnection.removeTrack(videoSender);
+              }
+            }
+          });
+        }
+      }
+
+      setVideoEnabled(enabled);
+      setHostControlsActive(true);
+
+      if (socketRef.current) {
+        socketRef.current.emit("toggle-video", {
+          roomId,
+          peerId,
+          enabled: enabled,
+        });
+      }
+
+      setTimeout(() => {
+        setHostControlsActive(false);
+      }, 2000);
+    } catch (error) {
+      console.error("Error in force toggle video:", error);
+    }
+  };
+
+  // NEW: Host control functions
+  const handleHostMuteAudio = (targetPeerId, currentlyEnabled) => {
+    if (!isHost) return;
+
+    const action = currentlyEnabled ? "mute" : "unmute";
+    const forced = currentlyEnabled; // Only force when muting
+
+    socketRef.current.emit("host-control-audio", {
+      roomId,
+      targetPeerId,
+      action,
+      forced,
+    });
+
+    // Update local state immediately for better UX
+    setParticipants((prev) => ({
+      ...prev,
+      [targetPeerId]: {
+        ...prev[targetPeerId],
+        audioEnabled: !currentlyEnabled,
+      },
+    }));
+  };
+
+  const handleHostMuteVideo = (targetPeerId, currentlyEnabled) => {
+    if (!isHost) return;
+
+    const action = currentlyEnabled ? "disable" : "enable";
+    const forced = currentlyEnabled; // Only force when disabling
+
+    socketRef.current.emit("host-control-video", {
+      roomId,
+      targetPeerId,
+      action,
+      forced,
+    });
+
+    // Update local state immediately for better UX
+    setParticipants((prev) => ({
+      ...prev,
+      [targetPeerId]: {
+        ...prev[targetPeerId],
+        videoEnabled: !currentlyEnabled,
+      },
+    }));
   };
 
   const cleanup = () => {
@@ -788,12 +1029,44 @@ const Room = () => {
       });
   };
 
+  // Prepare participants for ParticipantsList component
+  const participantsForList = [
+    {
+      id: "self",
+      username: `${username} (You)`,
+      audioEnabled,
+      videoEnabled: videoEnabled || isScreenSharing,
+      isHost,
+      peerId,
+    },
+    ...Object.values(participants).map((p) => ({
+      id: p.id,
+      username: p.username,
+      audioEnabled: p.audioEnabled,
+      videoEnabled: p.videoEnabled,
+      isHost: p.isHost,
+      peerId: p.peerId,
+    })),
+  ];
+
   return (
     <div className="room">
       <div className="room-header">
         <div>
           <h2>Meeting: {roomId}</h2>
-          <div className="connection-status">{connectionStatus}</div>
+          <div className="connection-status">
+            {connectionStatus}
+            {isHost && (
+              <span style={{ color: "#ffd700", marginLeft: "10px" }}>
+                • Host
+              </span>
+            )}
+            {hostControlsActive && (
+              <span style={{ color: "#ffa500", marginLeft: "10px" }}>
+                • Host Control Active
+              </span>
+            )}
+          </div>
         </div>
         <div className="header-controls">
           {peerId && (
@@ -840,6 +1113,9 @@ const Room = () => {
         <div className="no-participants-message">
           <p>Share the room ID with others to start the meeting!</p>
           <p>Status: {connectionStatus}</p>
+          {isHost && (
+            <p style={{ color: "#ffd700" }}>You are the host of this meeting</p>
+          )}
         </div>
       )}
 
@@ -861,15 +1137,13 @@ const Room = () => {
       {/* Participants list sidebar */}
       {showParticipants && (
         <ParticipantsList
-          participants={[
-            { id: "self", username: `${username} (You)` },
-            ...Object.values(participants).map((p) => ({
-              id: p.id,
-              username: p.username,
-            })),
-          ]}
+          participants={participantsForList}
           onClose={() => setShowParticipants(false)}
           onRemove={removeParticipantHandler}
+          onHostMuteAudio={handleHostMuteAudio}
+          onHostMuteVideo={handleHostMuteVideo}
+          currentUsername={username}
+          isHost={isHost}
         />
       )}
 

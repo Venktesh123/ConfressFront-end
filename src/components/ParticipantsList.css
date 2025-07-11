@@ -17,19 +17,28 @@
   align-items: center;
   padding: 15px;
   border-bottom: 1px solid #333;
+  background-color: #2a2a2a;
 }
 
 .participants-header h3 {
   margin: 0;
   font-size: 16px;
+  color: white;
 }
 
 .close-button {
   background: none;
   border: none;
-  color: white;
+  color: #888;
   cursor: pointer;
-  font-size: 16px;
+  padding: 5px;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.close-button:hover {
+  color: white;
+  background-color: #333;
 }
 
 .participants-body {
@@ -38,16 +47,158 @@
   padding: 15px;
 }
 
+.participants-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.participants-body::-webkit-scrollbar-track {
+  background: #1e1e1e;
+}
+
+.participants-body::-webkit-scrollbar-thumb {
+  background: #444;
+  border-radius: 3px;
+}
+
+.participants-body::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
 .participant-item {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 10px 0;
+  padding: 12px 0;
   border-bottom: 1px solid #333;
+  gap: 10px;
 }
 
 .participant-item:last-child {
   border-bottom: none;
+}
+
+.participant-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.participant-name {
+  color: white;
+  font-weight: 500;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.host-icon {
+  color: #ffd700;
+  font-size: 12px;
+}
+
+.participant-status {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.status-icon {
+  font-size: 12px;
+  padding: 2px;
+}
+
+.audio-on,
+.video-on {
+  color: #4caf50;
+}
+
+.audio-off,
+.video-off {
+  color: #f44336;
+}
+
+.host-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.host-control-btn {
+  background: none;
+  border: 1px solid #444;
+  color: #888;
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+}
+
+.host-control-btn:hover {
+  background-color: #333;
+  border-color: #555;
+}
+
+.mute-btn {
+  color: #4caf50;
+  border-color: #4caf50;
+}
+
+.mute-btn:hover {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: #f44336;
+  border-color: #f44336;
+}
+
+.unmute-btn {
+  color: #f44336;
+  border-color: #f44336;
+}
+
+.unmute-btn:hover {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: #4caf50;
+  border-color: #4caf50;
+}
+
+.disable-video-btn {
+  color: #4caf50;
+  border-color: #4caf50;
+}
+
+.disable-video-btn:hover {
+  background-color: rgba(244, 67, 54, 0.1);
+  color: #f44336;
+  border-color: #f44336;
+}
+
+.enable-video-btn {
+  color: #f44336;
+  border-color: #f44336;
+}
+
+.enable-video-btn:hover {
+  background-color: rgba(76, 175, 80, 0.1);
+  color: #4caf50;
+  border-color: #4caf50;
+}
+
+.remove-btn {
+  color: #ff5d5d;
+  border-color: #ff5d5d;
+}
+
+.remove-btn:hover {
+  background-color: rgba(255, 93, 93, 0.1);
+  color: #ff3c3c;
+  border-color: #ff3c3c;
 }
 
 .remove-button {
@@ -58,8 +209,74 @@
   font-size: 16px;
   opacity: 0.7;
   transition: opacity 0.2s ease;
+  padding: 5px;
+  border-radius: 4px;
 }
 
 .remove-button:hover {
   opacity: 1;
+  background-color: rgba(255, 93, 93, 0.1);
+}
+
+/* Mobile responsive adjustments */
+@media (max-width: 768px) {
+  .participants-list {
+    width: 100%;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 30;
+  }
+
+  .participants-header {
+    padding: 12px;
+  }
+
+  .participants-body {
+    padding: 10px;
+  }
+
+  .participant-item {
+    padding: 10px 0;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .participant-info {
+    min-width: 120px;
+  }
+
+  .host-controls {
+    gap: 4px;
+  }
+
+  .host-control-btn {
+    width: 24px;
+    height: 24px;
+    font-size: 10px;
+  }
+}
+
+@media (max-width: 480px) {
+  .participants-header {
+    padding: 10px;
+  }
+
+  .participants-header h3 {
+    font-size: 14px;
+  }
+
+  .participant-name {
+    font-size: 12px;
+  }
+
+  .status-icon {
+    font-size: 10px;
+  }
+
+  .host-control-btn {
+    width: 22px;
+    height: 22px;
+    font-size: 9px;
+  }
 }
