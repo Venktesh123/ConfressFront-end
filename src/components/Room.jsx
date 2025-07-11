@@ -26,16 +26,20 @@ const Room = () => {
   const [unreadChatCount, setUnreadChatCount] = useState(0);
   const [peerId, setPeerId] = useState("");
   const [connectionStatus, setConnectionStatus] = useState("Connecting...");
-  const [isHost, setIsHost] = useState(false); // New state for host status
-  const [hostControlsActive, setHostControlsActive] = useState(false); // Track if host controls are being used
+  const [isHost, setIsHost] = useState(false);
+  const [hostControlsActive, setHostControlsActive] = useState(false);
+  const [hostMasterControls, setHostMasterControls] = useState({
+    controlAllAudio: true,
+    controlAllVideo: true,
+  });
 
   const socketRef = useRef();
   const peerRef = useRef();
   const userVideo = useRef();
   const peersRef = useRef({});
   const streamRef = useRef();
-  const originalStreamRef = useRef(); // Store original camera stream
-  const screenStreamRef = useRef(); // Store screen share stream
+  const originalStreamRef = useRef();
+  const screenStreamRef = useRef();
 
   // Redirect if no username is provided
   useEffect(() => {
@@ -84,10 +88,9 @@ const Room = () => {
           width: { ideal: 1920, max: 1920 },
           height: { ideal: 1080, max: 1080 },
         },
-        audio: true, // Include system audio if available
+        audio: true,
       });
 
-      // Listen for screen share ending (user clicks browser stop button)
       screenStream.getVideoTracks()[0].addEventListener("ended", () => {
         console.log("Screen share ended by user");
         stopScreenShare();
@@ -104,27 +107,23 @@ const Room = () => {
     try {
       setConnectionStatus("Getting media...");
 
-      // Get media stream first
       const mediaStream = await getMediaStream(true, true);
 
       setStream(mediaStream);
       streamRef.current = mediaStream;
-      originalStreamRef.current = mediaStream; // Store original stream
+      originalStreamRef.current = mediaStream;
 
-      // Set local video
       if (userVideo.current) {
         userVideo.current.srcObject = mediaStream;
-        userVideo.current.muted = true; // Prevent feedback
+        userVideo.current.muted = true;
       }
 
       setConnectionStatus("Connecting to server...");
 
-      // Initialize socket connection
       socketRef.current = io(API_URL, {
         transports: ["websocket", "polling"],
       });
 
-      // Initialize PeerJS - Use the free cloud server (NO local server needed)
       peerRef.current = new Peer({
         config: {
           iceServers: [
@@ -134,13 +133,10 @@ const Room = () => {
             { urls: "stun:stun.relay.metered.ca:80" },
           ],
         },
-        debug: 1, // Reduce debug logs
+        debug: 1,
       });
 
-      // Setup socket event listeners
       setupSocketEvents(mediaStream);
-
-      // Setup peer event listeners
       setupPeerEvents(mediaStream);
     } catch (error) {
       console.error("Error initializing connection:", error);
@@ -153,14 +149,12 @@ const Room = () => {
   };
 
   const updateStreamForAllPeers = (newStream) => {
-    // Update stream for all existing peer connections
     Object.values(peersRef.current).forEach((call) => {
       if (call && call.peerConnection) {
         const senders = call.peerConnection.getSenders();
         const videoTrack = newStream.getVideoTracks()[0];
         const audioTrack = newStream.getAudioTracks()[0];
 
-        // Replace video track
         const videoSender = senders.find(
           (s) => s.track && s.track.kind === "video"
         );
@@ -172,7 +166,6 @@ const Room = () => {
             );
         }
 
-        // Replace audio track
         const audioSender = senders.find(
           (s) => s.track && s.track.kind === "audio"
         );
@@ -193,11 +186,50 @@ const Room = () => {
       setConnectionStatus("Connected to server");
     });
 
-    // Host assignment event
     socketRef.current.on("host-assigned", ({ isHost: hostStatus }) => {
       console.log("Host status received:", hostStatus);
       setIsHost(hostStatus);
     });
+
+    // NEW: Handle host master controls settings
+    socketRef.current.on("host-master-controls-updated", (controls) => {
+      console.log("Host master controls updated:", controls);
+      setHostMasterControls(controls);
+    });
+
+    // NEW: Handle host master audio control
+    socketRef.current.on(
+      "host-master-audio-control",
+      ({ enabled, forced, hostUsername }) => {
+        console.log(`Host master audio control: ${enabled}, forced: ${forced}`);
+
+        if (forced) {
+          forceToggleAudio(enabled);
+          showHostActionNotification(
+            `Host ${hostUsername} ${
+              enabled ? "unmuted" : "muted"
+            } everyone's microphone`
+          );
+        }
+      }
+    );
+
+    // NEW: Handle host master video control
+    socketRef.current.on(
+      "host-master-video-control",
+      ({ enabled, forced, hostUsername }) => {
+        console.log(`Host master video control: ${enabled}, forced: ${forced}`);
+
+        if (forced && !isScreenSharing) {
+          forceToggleVideo(enabled);
+          showHostActionNotification(
+            `Host ${hostUsername} ${
+              enabled ? "enabled" : "disabled"
+            } everyone's camera`
+          );
+        }
+      }
+    );
 
     socketRef.current.on(
       "user-joined",
@@ -209,7 +241,6 @@ const Room = () => {
       }) => {
         console.log(`User joined: ${newUsername} (${newPeerId})`);
 
-        // Send system message to chat
         if (socketRef.current) {
           socketRef.current.emit("send-system-message", {
             roomId,
@@ -224,7 +255,6 @@ const Room = () => {
           peerRef.current &&
           peerRef.current.open
         ) {
-          // Small delay to ensure both peers are ready
           setTimeout(() => {
             makeCall(newPeerId, newUsername, streamRef.current, userIsHost);
           }, 1000);
@@ -237,7 +267,6 @@ const Room = () => {
       ({ participants: existingParticipants }) => {
         console.log("Existing participants:", existingParticipants);
 
-        // Connect to existing participants
         Object.values(existingParticipants).forEach((participant) => {
           if (participant.peerId && participant.peerId !== peerId) {
             setTimeout(() => {
@@ -258,7 +287,6 @@ const Room = () => {
       ({ peerId: leftPeerId, participantId, username: leftUsername }) => {
         console.log(`User left: ${leftPeerId}`);
 
-        // Send system message to chat
         if (socketRef.current && leftUsername) {
           socketRef.current.emit("send-system-message", {
             roomId,
@@ -282,7 +310,7 @@ const Room = () => {
 
     socketRef.current.on(
       "user-toggle-audio",
-      ({ peerId: remotePeerId, enabled }) => {
+      ({ peerId: remotePeerId, enabled, isHostMasterControl }) => {
         setParticipants((prev) => ({
           ...prev,
           [remotePeerId]: {
@@ -290,12 +318,17 @@ const Room = () => {
             audioEnabled: enabled,
           },
         }));
+
+        // If this is a host master control action, show notification
+        if (isHostMasterControl) {
+          console.log("Host master control affected all participants' audio");
+        }
       }
     );
 
     socketRef.current.on(
       "user-toggle-video",
-      ({ peerId: remotePeerId, enabled }) => {
+      ({ peerId: remotePeerId, enabled, isHostMasterControl }) => {
         setParticipants((prev) => ({
           ...prev,
           [remotePeerId]: {
@@ -303,10 +336,14 @@ const Room = () => {
             videoEnabled: enabled,
           },
         }));
+
+        // If this is a host master control action, show notification
+        if (isHostMasterControl) {
+          console.log("Host master control affected all participants' video");
+        }
       }
     );
 
-    // Screen sharing events
     socketRef.current.on(
       "user-screen-share",
       ({ peerId: remotePeerId, isSharing }) => {
@@ -321,11 +358,10 @@ const Room = () => {
       }
     );
 
-    // NEW: Host control events
+    // Individual host control events (existing functionality)
     socketRef.current.on("host-muted-audio", ({ forced }) => {
       console.log("Host muted your audio");
       if (forced && audioEnabled) {
-        // Force mute the user
         forceToggleAudio(false);
         showHostActionNotification("Host muted your microphone");
       }
@@ -341,7 +377,6 @@ const Room = () => {
     socketRef.current.on("host-disabled-video", ({ forced }) => {
       console.log("Host disabled your video");
       if (forced && videoEnabled && !isScreenSharing) {
-        // Force disable video
         forceToggleVideo(false);
         showHostActionNotification("Host turned off your camera");
       }
@@ -375,10 +410,8 @@ const Room = () => {
       navigate("/");
     });
 
-    // Chat event listeners - only handle unread count logic
-    // The actual message handling is done by the Chat component
+    // Chat event listeners
     const handleChatUnread = (messageData) => {
-      // If chat is closed and message is not from current user, increment unread count
       if (!showChat && messageData.username !== username) {
         setUnreadChatCount((prev) => prev + 1);
       }
@@ -395,7 +428,6 @@ const Room = () => {
       setPeerId(id);
       setConnectionStatus("Joining room...");
 
-      // Join the room with socket and peer info
       socketRef.current.emit("join-room", {
         roomId,
         username,
@@ -408,7 +440,6 @@ const Room = () => {
     peerRef.current.on("call", (call) => {
       console.log("Receiving call from:", call.peer);
 
-      // Answer the call with our current stream
       call.answer(streamRef.current);
 
       call.on("stream", (remoteStream) => {
@@ -432,11 +463,9 @@ const Room = () => {
       console.error("Peer error:", error);
       setConnectionStatus("Peer connection error");
 
-      // Try to reconnect after a delay
       setTimeout(() => {
         if (peerRef.current.destroyed) {
           console.log("Attempting to recreate peer connection...");
-          // Recreate peer if destroyed
           initializePeer(streamRef.current);
         }
       }, 3000);
@@ -555,9 +584,7 @@ const Room = () => {
     });
   };
 
-  // NEW: Show notification when host performs actions
   const showHostActionNotification = (message) => {
-    // Create a notification element
     const notification = document.createElement("div");
     notification.className = "host-action-notification";
     notification.textContent = message;
@@ -576,7 +603,6 @@ const Room = () => {
       animation: slideDown 0.3s ease-out;
     `;
 
-    // Add animation keyframes if not already added
     if (!document.querySelector("#hostNotificationStyles")) {
       const style = document.createElement("style");
       style.id = "hostNotificationStyles";
@@ -597,15 +623,13 @@ const Room = () => {
 
     document.body.appendChild(notification);
 
-    // Remove notification after 3 seconds
     setTimeout(() => {
       if (notification.parentNode) {
         notification.parentNode.removeChild(notification);
       }
-    }, 3000);
+    }, 4000);
   };
 
-  // NEW: Force toggle functions (when host controls user)
   const forceToggleAudio = (enabled) => {
     if (streamRef.current) {
       const audioTracks = streamRef.current.getAudioTracks();
@@ -616,16 +640,6 @@ const Room = () => {
       setAudioEnabled(enabled);
       setHostControlsActive(true);
 
-      // Broadcast the change
-      if (socketRef.current) {
-        socketRef.current.emit("toggle-audio", {
-          roomId,
-          peerId,
-          enabled: enabled,
-        });
-      }
-
-      // Reset host controls active flag after a delay
       setTimeout(() => {
         setHostControlsActive(false);
       }, 2000);
@@ -637,14 +651,12 @@ const Room = () => {
 
     try {
       if (!enabled && videoEnabled) {
-        // Force turn OFF video
         if (streamRef.current) {
           const videoTracks = streamRef.current.getVideoTracks();
           videoTracks.forEach((track) => {
             track.stop();
           });
 
-          // Create new stream with only audio
           const audioStream = await getMediaStream(false, true);
           const newStream = new MediaStream([...audioStream.getAudioTracks()]);
 
@@ -656,7 +668,6 @@ const Room = () => {
             userVideo.current.srcObject = newStream;
           }
 
-          // Update peer connections
           Object.values(peersRef.current).forEach((call) => {
             if (call && call.peerConnection) {
               const videoSender = call.peerConnection
@@ -673,14 +684,6 @@ const Room = () => {
       setVideoEnabled(enabled);
       setHostControlsActive(true);
 
-      if (socketRef.current) {
-        socketRef.current.emit("toggle-video", {
-          roomId,
-          peerId,
-          enabled: enabled,
-        });
-      }
-
       setTimeout(() => {
         setHostControlsActive(false);
       }, 2000);
@@ -689,12 +692,30 @@ const Room = () => {
     }
   };
 
-  // NEW: Host control functions
+  // NEW: Toggle host master controls
+  const toggleHostMasterControls = (type) => {
+    if (!isHost) return;
+
+    const newSettings = {
+      ...hostMasterControls,
+      [type]: !hostMasterControls[type],
+    };
+
+    setHostMasterControls(newSettings);
+
+    if (socketRef.current) {
+      socketRef.current.emit("update-host-master-controls", {
+        roomId,
+        settings: newSettings,
+      });
+    }
+  };
+
   const handleHostMuteAudio = (targetPeerId, currentlyEnabled) => {
     if (!isHost) return;
 
     const action = currentlyEnabled ? "mute" : "unmute";
-    const forced = currentlyEnabled; // Only force when muting
+    const forced = currentlyEnabled;
 
     socketRef.current.emit("host-control-audio", {
       roomId,
@@ -703,7 +724,6 @@ const Room = () => {
       forced,
     });
 
-    // Update local state immediately for better UX
     setParticipants((prev) => ({
       ...prev,
       [targetPeerId]: {
@@ -717,7 +737,7 @@ const Room = () => {
     if (!isHost) return;
 
     const action = currentlyEnabled ? "disable" : "enable";
-    const forced = currentlyEnabled; // Only force when disabling
+    const forced = currentlyEnabled;
 
     socketRef.current.emit("host-control-video", {
       roomId,
@@ -726,7 +746,6 @@ const Room = () => {
       forced,
     });
 
-    // Update local state immediately for better UX
     setParticipants((prev) => ({
       ...prev,
       [targetPeerId]: {
@@ -739,7 +758,6 @@ const Room = () => {
   const cleanup = () => {
     console.log("Cleaning up connections...");
 
-    // Stop all media tracks
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((track) => {
         track.stop();
@@ -758,19 +776,16 @@ const Room = () => {
       });
     }
 
-    // Close all peer connections
     Object.values(peersRef.current).forEach((call) => {
       if (call && call.close) {
         call.close();
       }
     });
 
-    // Destroy peer connection
     if (peerRef.current && !peerRef.current.destroyed) {
       peerRef.current.destroy();
     }
 
-    // Disconnect socket
     if (socketRef.current) {
       socketRef.current.disconnect();
     }
@@ -796,38 +811,29 @@ const Room = () => {
   };
 
   const toggleVideo = async () => {
-    // Don't allow video toggle while screen sharing
     if (isScreenSharing) return;
 
     try {
       if (videoEnabled) {
-        // Turn OFF video - stop video tracks
         if (streamRef.current) {
           const videoTracks = streamRef.current.getVideoTracks();
           videoTracks.forEach((track) => {
-            track.stop(); // Actually stop the camera
+            track.stop();
           });
 
-          // Create new stream with only audio
           const audioStream = await getMediaStream(false, true);
-
-          // Combine existing audio with no video
           const newStream = new MediaStream([...audioStream.getAudioTracks()]);
 
-          // Update the stream reference
           streamRef.current = newStream;
           originalStreamRef.current = newStream;
           setStream(newStream);
 
-          // Update local video element
           if (userVideo.current) {
             userVideo.current.srcObject = newStream;
           }
 
-          // Update all peer connections to send audio-only stream
           Object.values(peersRef.current).forEach((call) => {
             if (call && call.peerConnection) {
-              // Remove video track from all senders
               const videoSender = call.peerConnection
                 .getSenders()
                 .find((s) => s.track && s.track.kind === "video");
@@ -838,23 +844,18 @@ const Room = () => {
           });
         }
       } else {
-        // Turn ON video - get new stream with video
         const newStream = await getMediaStream(true, true);
 
-        // Update the stream reference
         streamRef.current = newStream;
         originalStreamRef.current = newStream;
         setStream(newStream);
 
-        // Update local video element
         if (userVideo.current) {
           userVideo.current.srcObject = newStream;
         }
 
-        // Update all peer connections with new video stream
         Object.values(peersRef.current).forEach((call) => {
           if (call && call.peerConnection) {
-            // Add video track to all peer connections
             const videoTrack = newStream.getVideoTracks()[0];
             if (videoTrack) {
               call.peerConnection.addTrack(videoTrack, newStream);
@@ -880,34 +881,26 @@ const Room = () => {
 
   const toggleScreenShare = async () => {
     if (!isScreenSharing) {
-      // Start screen sharing
       try {
         const screenStream = await getScreenStream();
 
-        // Combine screen video with current audio
         const audioTracks = streamRef.current.getAudioTracks();
         const screenVideoTrack = screenStream.getVideoTracks()[0];
 
-        // Create new stream with screen video and current audio
         const newStream = new MediaStream([screenVideoTrack, ...audioTracks]);
 
-        // Store the screen stream for cleanup
         screenStreamRef.current = screenStream;
 
-        // Update local video
         if (userVideo.current) {
           userVideo.current.srcObject = newStream;
         }
 
-        // Update stream reference
         streamRef.current = newStream;
         setStream(newStream);
         setIsScreenSharing(true);
 
-        // Update all peer connections
         updateStreamForAllPeers(newStream);
 
-        // Notify other participants
         if (socketRef.current) {
           socketRef.current.emit("user-screen-share", {
             roomId,
@@ -926,14 +919,12 @@ const Room = () => {
         }
       }
     } else {
-      // Stop screen sharing
       stopScreenShare();
     }
   };
 
   const stopScreenShare = async () => {
     try {
-      // Stop screen stream
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach((track) => {
           track.stop();
@@ -941,29 +932,23 @@ const Room = () => {
         screenStreamRef.current = null;
       }
 
-      // Get original camera stream or create new one
       let cameraStream = originalStreamRef.current;
 
-      // If original stream is not available or has no video tracks, get new one
       if (!cameraStream || cameraStream.getVideoTracks().length === 0) {
         cameraStream = await getMediaStream(videoEnabled, true);
         originalStreamRef.current = cameraStream;
       }
 
-      // Update local video
       if (userVideo.current) {
         userVideo.current.srcObject = cameraStream;
       }
 
-      // Update stream reference
       streamRef.current = cameraStream;
       setStream(cameraStream);
       setIsScreenSharing(false);
 
-      // Update all peer connections
       updateStreamForAllPeers(cameraStream);
 
-      // Notify other participants
       if (socketRef.current) {
         socketRef.current.emit("user-screen-share", {
           roomId,
@@ -982,7 +967,6 @@ const Room = () => {
   const toggleChat = () => {
     setShowChat(!showChat);
     if (!showChat) {
-      // Reset unread count when opening chat
       setUnreadChatCount(0);
     }
   };
@@ -1018,7 +1002,6 @@ const Room = () => {
         alert("Room ID copied to clipboard");
       })
       .catch(() => {
-        // Fallback
         const textarea = document.createElement("textarea");
         textarea.value = roomId;
         document.body.appendChild(textarea);
@@ -1029,7 +1012,6 @@ const Room = () => {
       });
   };
 
-  // Prepare participants for ParticipantsList component
   const participantsForList = [
     {
       id: "self",
@@ -1075,11 +1057,38 @@ const Room = () => {
           <button className="copy-button" onClick={copyRoomId}>
             Copy Room ID
           </button>
+
+          {/* NEW: Host Master Controls Toggle */}
+          {isHost && (
+            <div className="host-master-controls">
+              <button
+                className={`copy-button ${
+                  hostMasterControls.controlAllAudio ? "active" : ""
+                }`}
+                onClick={() => toggleHostMasterControls("controlAllAudio")}
+                title={`Master Audio Control: ${
+                  hostMasterControls.controlAllAudio ? "ON" : "OFF"
+                }`}
+              >
+                🎤 Master: {hostMasterControls.controlAllAudio ? "ON" : "OFF"}
+              </button>
+              <button
+                className={`copy-button ${
+                  hostMasterControls.controlAllVideo ? "active" : ""
+                }`}
+                onClick={() => toggleHostMasterControls("controlAllVideo")}
+                title={`Master Video Control: ${
+                  hostMasterControls.controlAllVideo ? "ON" : "OFF"
+                }`}
+              >
+                📹 Master: {hostMasterControls.controlAllVideo ? "ON" : "OFF"}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
       <div className={`participants-container ${showChat ? "chat-open" : ""}`}>
-        {/* Current user's video */}
         <div className="participant-wrapper">
           <Participant
             username={`${username} (You)`}
@@ -1093,7 +1102,6 @@ const Room = () => {
           />
         </div>
 
-        {/* Other participants */}
         {Object.values(participants).map((participant) => (
           <div className="participant-wrapper" key={participant.peerId}>
             <Participant
@@ -1108,18 +1116,25 @@ const Room = () => {
         ))}
       </div>
 
-      {/* Show message if no other participants */}
       {Object.keys(participants).length === 0 && (
         <div className="no-participants-message">
           <p>Share the room ID with others to start the meeting!</p>
           <p>Status: {connectionStatus}</p>
           {isHost && (
-            <p style={{ color: "#ffd700" }}>You are the host of this meeting</p>
+            <>
+              <p style={{ color: "#ffd700" }}>
+                You are the host of this meeting
+              </p>
+              <p style={{ color: "#88ff88", fontSize: "12px" }}>
+                Master Controls: Audio{" "}
+                {hostMasterControls.controlAllAudio ? "ON" : "OFF"}, Video{" "}
+                {hostMasterControls.controlAllVideo ? "ON" : "OFF"}
+              </p>
+            </>
           )}
         </div>
       )}
 
-      {/* Controls */}
       <Controls
         audioEnabled={audioEnabled}
         videoEnabled={videoEnabled}
@@ -1134,7 +1149,6 @@ const Room = () => {
         toggleScreenShare={toggleScreenShare}
       />
 
-      {/* Participants list sidebar */}
       {showParticipants && (
         <ParticipantsList
           participants={participantsForList}
@@ -1147,7 +1161,6 @@ const Room = () => {
         />
       )}
 
-      {/* Chat component */}
       {showChat && (
         <Chat
           socket={socketRef.current}
